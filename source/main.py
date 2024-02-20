@@ -26,7 +26,7 @@ with os.scandir(path) as all_files:
 
 """result - DataFrame с обработанными обращениями"""
 result = pd.DataFrame({'Имя': [], 'SD': [], 'Метки': [], 'Регион': [], 'Воспроизводится': [],
-                       'Название': [], 'Описание': [], 'Количество прикреплённых файлов': [], 'Действие': []})
+                       'Название': [], 'Описание': [], 'Действие': []})
 
 all_issue = pd.read_excel(current_file, sheet_name=0).values.tolist()
 for current_issue in all_issue:
@@ -37,12 +37,12 @@ for current_issue in all_issue:
 
     """Если обращения с таким sd нет - создаём новое, иначе - добавляем комментарий"""
     if new_issue is None:
-        new_issue = gismu3lp_project.create_issue(name=current_issue[4], description=current_issue[4],
+        new_issue = gismu3lp_project.create_issue(name=current_issue[4], description=current_issue[5],
                                                   sd=sd, labels=current_issue[1], reproduce_type=current_issue[3],
                                                   region=current_issue[2])
         result = pd.concat([result, gismu3lp_project.issue_to_pd(new_issue, 'Новая')])
     else:
-        gismu3lp_project.add_comment(new_issue.key, current_issue[4])
+        gismu3lp_project.add_comment(new_issue.key, current_issue[5])
         result = pd.concat([result, gismu3lp_project.issue_to_pd(new_issue, 'Комментарий')])
 
 """Если есть вложения - прикладываем их"""

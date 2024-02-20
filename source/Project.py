@@ -49,7 +49,7 @@ class Project:
         array_labels = labels.split(' ')
         result_labels = []
         assignee_login = None
-        excel_labels = pd.read_excel("Области.xlsx", sheet_name=0).to_numpy()
+        excel_labels = pd.read_excel("../resources/Области.xlsx", sheet_name=0).to_numpy()
         for current_labels in array_labels:
             for current_excel in excel_labels:
                 if (current_labels.upper() == str(current_excel[0]).upper() or
@@ -58,8 +58,7 @@ class Project:
                     if assignee_login is None:
                         assignee_login = current_excel[2]
                     break
-        assignee = self.get_user(assignee_login)
-        return {'labels': result_labels, 'assignee': assignee}
+        return {'labels': result_labels, 'assignee': assignee_login}
 
     @staticmethod
     def match_region(region):
@@ -67,10 +66,10 @@ class Project:
 
         if pd.isnull(region):
             return None
-        excel_regions = pd.read_excel("Регионы.xlsx", sheet_name=0).to_numpy()
+        excel_regions = pd.read_excel("../resources/Регионы.xlsx", sheet_name=0).to_numpy()
         for current_region in excel_regions:
-            if region.upper() == str(current_region[0]).upper():
-                return {'value': current_region[1], 'id': current_region[2]}
+            if str(current_region[0]).upper() in region.upper():
+                return {'value': current_region[1], 'id': str(current_region[2])}
         return None
 
     @staticmethod
@@ -78,12 +77,12 @@ class Project:
         """Собирает поле 'Воспроизводится'
            '' - Иное, '1' - у 1, иначе - в 100%"""
 
-        if reproduce_type == '' or pd.isnull(reproduce_type):
-            reproduce = {'value': 'Иное', 'id': '21756'}
-        elif reproduce_type == '1':
+        if str(reproduce_type) == '1':
             reproduce = {'value': 'у 1 пользователя/АРМ', 'id': '21755'}
-        else:
+        elif str(reproduce_type) == '2':
             reproduce = {'value': 'в 100% случаев (у всех пользователей)', 'id': '21754'}
+        else:
+            reproduce = {'value': 'Иное', 'id': '21756'}
         return reproduce
 
     def create_issue(self, name, description, sd, labels, reproduce_type, region):
@@ -99,16 +98,18 @@ class Project:
             "components": [{'name': 'ЦПОиБА', "id": '27849'}],
             "customfield_23497": sd.upper(),
             "labels": labels_and_assignee['labels'],
-            "customfield_23514": region,
-            "assignee": labels_and_assignee['assignee']
+            "customfield_23514": region
         }
         new_issue = self.jira.create_issue(fields=issue_dict)
+        self.jira.assign_issue(new_issue.key, labels_and_assignee['assignee'])
         return new_issue
 
     def add_comment(self, issue_key, text):
         """К задаче по её имени (GISMU3LP-22197) добавляет комментарий text"""
 
         comment = self.jira.add_comment(issue_key, text)
+        issue = self.get_issue(issue_key)
+        self.jira.transition_issue(issue, 'Анализ')
         return comment
 
     def add_attachments(self, directory):
@@ -143,8 +144,7 @@ class Project:
                 'Метки': [' '.join(issue.fields.labels)],
                 'Регион': [region],
                 'Воспроизводится': [reproduce],
-                'Название': [issue.fields.summary], 'Описание': [issue.fields.description],
-                'Количество прикреплённых файлов': [0], 'Действие': [action]})
+                'Название': [issue.fields.summary], 'Описание': [issue.fields.description], 'Действие': [action]})
         return issue_pd
 
     def get_unique_value_for_field(self, field_name, number_of_query):
