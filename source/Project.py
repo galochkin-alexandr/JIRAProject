@@ -100,6 +100,8 @@ class Project:
             raise GISMUException("Ошибка при сопоставлении поля 'Воспроизводится' " + reproduce_type, reproduce_except)
 
     def create_issue(self, name, description, sd, labels, reproduce_type, region):
+        """Создание задачи в Jira"""
+
         print("Создание задачи" + sd)
         try:
             labels_and_assignee = self.labels_and_assignee(labels)
@@ -125,6 +127,7 @@ class Project:
     def add_comment(self, issue_key, text):
         """К задаче по её имени (GISMU3LP-22197) добавляет комментарий text"""
 
+        print("Комментарий к " + issue_key)
         try:
             comment = self.jira.add_comment(issue_key, text)
             issue = self.get_issue(issue_key)
@@ -146,7 +149,7 @@ class Project:
                     counter += 1
             return {'issue_key': issue_key, 'number_of_attachments': counter}
         else:
-            raise GISMUException("Ошибка при добавлении вложения " + directory.name)
+            raise GISMUException("Отсутствует обращение с sd " + directory.name)
 
     @staticmethod
     def issue_to_pd(issue, action):
