@@ -1,4 +1,5 @@
-from jira import JIRA, JIRAError
+from jira import JIRA
+from GISMUException import *
 import pandas as pd
 import os
 
@@ -16,20 +17,24 @@ class Project:
     def find_issue(self, number_sd):
         """Достаёт имя задачи по её SD"""
 
-        search_query = """ "Номер обращения АСУЭ" ~ """ + number_sd.upper()
-        result = self.jira.search_issues(search_query)
-        if result.__len__() > 0:
-            return result[0]
-        return None
+        try:
+            search_query = """ "Номер обращения АСУЭ" ~ """ + number_sd.upper()
+            result = self.jira.search_issues(search_query)
+            if result.__len__() > 0:
+                return result[0]
+            else:
+                return None
+        except Exception as find_issue_except:
+            raise GISMUException("Ошибка при получении задачи по sd ", find_issue_except)
 
     def get_issue(self, issue_key):
         """Достаёт задачу по её имени (GISMU3LP-22197)"""
 
         try:
             issue = self.jira.issue(issue_key)
-        except JIRAError:
-            issue = None
-        return issue
+            return issue
+        except Exception as get_issue_except:
+            raise GISMUException("Ошибка при получении задачи по ключу" + issue_key, get_issue_except)
 
     def get_user(self, login):
         """Достаёт пользователя по его имени (agalochkin)"""
@@ -37,80 +42,96 @@ class Project:
         try:
             jira_user = self.jira.user(login)
             result_user = {'displayName': jira_user.displayName, 'key': jira_user.key, 'name': jira_user.name}
-        except JIRAError:
-            result_user = None
+        except Exception as get_user_except:
+            raise GISMUException("Ошибка при получении пользователя " + login, get_user_except)
         return result_user
 
-    def labels_and_assignee(self, labels):
+    @staticmethod
+    def labels_and_assignee(labels):
         """Собирает исполнителя и области по строке меток через пробел (РП ЗП)"""
-
-        if pd.isnull(labels):
-            return {'labels': None, 'assignee': None}
-        array_labels = labels.split(' ')
-        result_labels = []
-        assignee_login = None
-        excel_labels = pd.read_excel("../resources/Области.xlsx", sheet_name=0).to_numpy()
-        for current_labels in array_labels:
-            for current_excel in excel_labels:
-                if (current_labels.upper() == str(current_excel[0]).upper() or
-                        current_labels.upper() == str(current_excel[1]).upper()):
-                    result_labels.append(current_excel[0])
-                    if assignee_login is None:
-                        assignee_login = current_excel[2]
-                    break
-        return {'labels': result_labels, 'assignee': assignee_login}
+        try:
+            if pd.isnull(labels):
+                return {'labels': None, 'assignee': None}
+            array_labels = labels.split(' ')
+            result_labels = []
+            assignee_login = None
+            excel_labels = pd.read_excel("../resources/Области.xlsx", sheet_name=0).to_numpy()
+            for current_labels in array_labels:
+                for current_excel in excel_labels:
+                    if (current_labels.upper() == str(current_excel[0]).upper() or
+                            current_labels.upper() == str(current_excel[1]).upper()):
+                        result_labels.append(current_excel[0])
+                        if assignee_login is None:
+                            assignee_login = current_excel[2]
+                        break
+            return {'labels': result_labels, 'assignee': assignee_login}
+        except Exception as labels_except:
+            str_labels = ', '.join(labels)
+            raise GISMUException("Ошибка при сопоставлении меток и пользователей " + str_labels, labels_except)
 
     @staticmethod
     def match_region(region):
         """Сопоставляет региону из АСУЭ регион в Jira"""
 
-        if pd.isnull(region):
-            return None
-        excel_regions = pd.read_excel("../resources/Регионы.xlsx", sheet_name=0).to_numpy()
-        for current_region in excel_regions:
-            if str(current_region[0]).upper() in region.upper():
-                return {'value': current_region[1], 'id': str(current_region[2])}
-        return None
+        try:
+            if pd.isnull(region):
+                return None
+            excel_regions = pd.read_excel("../resources/Регионы.xlsx", sheet_name=0).to_numpy()
+            for current_region in excel_regions:
+                if str(current_region[0]).upper() in region.upper():
+                    return {'value': current_region[1], 'id': str(current_region[2])}
+        except Exception as region_except:
+            raise GISMUException("Ошибка при сопоставлении региона" + region, region_except)
 
     @staticmethod
     def reproducibility(reproduce_type):
         """Собирает поле 'Воспроизводится'
            '' - Иное, '1' - у 1, иначе - в 100%"""
 
-        if str(reproduce_type) == '1':
-            reproduce = {'value': 'у 1 пользователя/АРМ', 'id': '21755'}
-        elif str(reproduce_type) == '2':
-            reproduce = {'value': 'в 100% случаев (у всех пользователей)', 'id': '21754'}
-        else:
-            reproduce = {'value': 'Иное', 'id': '21756'}
-        return reproduce
+        try:
+            if str(reproduce_type) == '1':
+                reproduce = {'value': 'у 1 пользователя/АРМ', 'id': '21755'}
+            elif str(reproduce_type) == '2':
+                reproduce = {'value': 'в 100% случаев (у всех пользователей)', 'id': '21754'}
+            else:
+                reproduce = {'value': 'Иное', 'id': '21756'}
+            return reproduce
+        except Exception as reproduce_except:
+            raise GISMUException("Ошибка при сопоставлении поля 'Воспроизводится' " + reproduce_type, reproduce_except)
 
     def create_issue(self, name, description, sd, labels, reproduce_type, region):
-        labels_and_assignee = self.labels_and_assignee(labels)
-        reproduce = self.reproducibility(reproduce_type)
-        region = self.match_region(region)
-        issue_dict = {
-            'project': {'key': self.jira_project.key},
-            'summary': name,
-            'description': description,
-            'issuetype': {'name': 'Обращение'},
-            "customfield_23496": reproduce,
-            "components": [{'name': 'ЦПОиБА', "id": '27849'}],
-            "customfield_23497": sd.upper(),
-            "labels": labels_and_assignee['labels'],
-            "customfield_23514": region
-        }
-        new_issue = self.jira.create_issue(fields=issue_dict)
-        self.jira.assign_issue(new_issue.key, labels_and_assignee['assignee'])
-        return new_issue
+        print("Создание задачи" + sd)
+        try:
+            labels_and_assignee = self.labels_and_assignee(labels)
+            reproduce = self.reproducibility(reproduce_type)
+            region = self.match_region(region)
+            issue_dict = {
+                'project': {'key': self.jira_project.key},
+                'summary': name.replace('\n', ''),
+                'description': description,
+                'issuetype': {'name': 'Обращение'},
+                "customfield_23496": reproduce,
+                "components": [{'name': 'ЦПОиБА', "id": '27849'}],
+                "customfield_23497": sd.upper(),
+                "labels": labels_and_assignee['labels'],
+                "customfield_23514": region
+            }
+            new_issue = self.jira.create_issue(fields=issue_dict)
+            self.jira.assign_issue(new_issue.key, labels_and_assignee['assignee'])
+            return new_issue
+        except Exception as create_except:
+            raise GISMUException("Ошибка при создании задачи " + sd, create_except)
 
     def add_comment(self, issue_key, text):
         """К задаче по её имени (GISMU3LP-22197) добавляет комментарий text"""
 
-        comment = self.jira.add_comment(issue_key, text)
-        issue = self.get_issue(issue_key)
-        self.jira.transition_issue(issue, 'Анализ')
-        return comment
+        try:
+            comment = self.jira.add_comment(issue_key, text)
+            issue = self.get_issue(issue_key)
+            self.jira.transition_issue(issue, 'Анализ')
+            return comment
+        except Exception as comment_except:
+            raise GISMUException("Ошибка при создании комментария " + issue_key, comment_except)
 
     def add_attachments(self, directory):
         """Прикрепляет к задаче все вложения из папки с названием SD... Возвращает количество"""
@@ -123,7 +144,9 @@ class Project:
                     with open(current_attachment.path, 'rb') as current_file:
                         self.jira.add_attachment(issue=issue_key, attachment=current_file)
                     counter += 1
-        return {'issue_key': issue_key, 'number_of_attachments': counter}
+            return {'issue_key': issue_key, 'number_of_attachments': counter}
+        else:
+            raise GISMUException("Ошибка при добавлении вложения " + directory.name)
 
     @staticmethod
     def issue_to_pd(issue, action):
