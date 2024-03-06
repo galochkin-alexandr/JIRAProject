@@ -137,10 +137,10 @@ class Project:
                 "components": [{'name': 'ЦПОиБА', "id": '27849'}],
                 "customfield_23497": sd.upper(),
                 "labels": labels_and_assignee['labels'],
-                "customfield_23514": region,
-                "customfield_26111": category
+                "customfield_23514": region
             }
             new_issue = self.jira.create_issue(fields=issue_dict)
+            new_issue.update(fields={'customfield_26111': category})
             self.jira.assign_issue(new_issue.key, labels_and_assignee['assignee'])
             return new_issue
         except Exception as create_except:
@@ -155,6 +155,8 @@ class Project:
             issue = self.get_issue(issue_key)
             if issue.fields.status.id == '19099':
                 self.jira.transition_issue(issue, 'Анализ')
+            if 'ЗАПРОШ' in text.upper():
+                self.jira.transition_issue(issue, 'Требует уточнения')
             return comment
         except Exception as comment_except:
             raise GISMUException("Ошибка при создании комментария " + issue_key, comment_except)
@@ -198,7 +200,7 @@ class Project:
             {'Имя': [issue.key], 'SD': [issue.fields.customfield_23497],
                 'Метки': [' '.join(issue.fields.labels)],
                 'Регион': [region],
-                'Воспроизводится': [reproduce],
+                'Воспроизводится': [reproduce], 'Категория': [category],
                 'Название': [issue.fields.summary], 'Описание': [issue.fields.description], 'Действие': [action]})
         return issue_pd
 
