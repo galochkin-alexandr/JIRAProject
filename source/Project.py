@@ -86,7 +86,7 @@ class Project:
     @staticmethod
     def reproducibility(reproduce_type):
         """Собирает поле 'Воспроизводится'
-           '' - Иное, '1' - у 1, иначе - в 100%"""
+           '1' - у 1, '2' - в 100%, иначе - Иное"""
 
         try:
             if str(reproduce_type) == '1':
@@ -99,14 +99,35 @@ class Project:
         except Exception as reproduce_except:
             raise GISMUException("Ошибка при сопоставлении поля 'Воспроизводится' " + reproduce_type, reproduce_except)
 
-    def create_issue(self, name, description, sd, labels, reproduce_type, region):
+    @staticmethod
+    def category(category_type):
+        """Собирает поле 'Категория' '1' - Консультация, '2' - Запрос на изменение,
+        '3' - Выгрузка, '4' - Вопрос по качеству данных, иначе - Не определено, """
+
+        try:
+            if str(category_type) == '1':
+                category = {'value': 'Консультация', 'id': '26977'}
+            elif str(category_type) == '2':
+                category = {'value': 'Запрос на изменение', 'id': '26978'}
+            elif str(category_type) == '3':
+                category = {'value': 'Выгрузка', 'id': '26979'}
+            elif str(category_type) == '4':
+                category = {'value': 'Вопрос по качеству данных', 'id': '26980'}
+            else:
+                category = None
+            return category
+        except Exception as category_except:
+            raise GISMUException("Ошибка при сопоставлении поля 'Категория' " + category_type, category_except)
+
+    def create_issue(self, name, description, sd, labels, reproduce_type, region, category_type):
         """Создание задачи в Jira"""
 
-        print("Создание задачи" + sd)
+        print("Создание задачи " + sd)
         try:
             labels_and_assignee = self.labels_and_assignee(labels)
             reproduce = self.reproducibility(reproduce_type)
             region = self.match_region(region)
+            category = self.category(category_type)
             issue_dict = {
                 'project': {'key': self.jira_project.key},
                 'summary': name.replace('\n', ''),
@@ -116,7 +137,8 @@ class Project:
                 "components": [{'name': 'ЦПОиБА', "id": '27849'}],
                 "customfield_23497": sd.upper(),
                 "labels": labels_and_assignee['labels'],
-                "customfield_23514": region
+                "customfield_23514": region,
+                "customfield_26111": category
             }
             new_issue = self.jira.create_issue(fields=issue_dict)
             self.jira.assign_issue(new_issue.key, labels_and_assignee['assignee'])
@@ -131,13 +153,14 @@ class Project:
         try:
             comment = self.jira.add_comment(issue_key, text)
             issue = self.get_issue(issue_key)
-            self.jira.transition_issue(issue, 'Анализ')
+            if issue.fields.status.id == '19099':
+                self.jira.transition_issue(issue, 'Анализ')
             return comment
         except Exception as comment_except:
             raise GISMUException("Ошибка при создании комментария " + issue_key, comment_except)
 
     def add_attachments(self, directory):
-        """Прикрепляет к задаче все вложения из папки с названием SD... Возвращает количество"""
+        """Прикрепляет к задаче все вложения из папки с названием SD... Возвращает pd"""
 
         issue_key = self.find_issue(directory.name)
         counter = 0
@@ -147,7 +170,8 @@ class Project:
                     with open(current_attachment.path, 'rb') as current_file:
                         self.jira.add_attachment(issue=issue_key, attachment=current_file)
                     counter += 1
-            return {'issue_key': issue_key, 'number_of_attachments': counter}
+            print({'Имя обращения': issue_key, 'Кол-во вложений': counter})
+            return pd.DataFrame({'Имя обращения': [issue_key], 'Кол-во вложений': [counter]})
         else:
             raise GISMUException("Отсутствует обращение с sd " + directory.name)
 
@@ -164,6 +188,11 @@ class Project:
             reproduce = 'Не заполнено'
         else:
             reproduce = issue.fields.customfield_23496.value
+
+        if issue.fields.customfield_26111 is None:
+            category = 'Не заполнено'
+        else:
+            category = issue.fields.customfield_26111.value
 
         issue_pd = pd.DataFrame(
             {'Имя': [issue.key], 'SD': [issue.fields.customfield_23497],
