@@ -17,8 +17,8 @@ array_of_dir = []
 main_file = ''
 
 try:
-    gismu3lp_project = Project(server_name, project_name, token_auth)
 
+    gismu3lp_project = Project(server_name, project_name, token_auth)
 
     """main_file - файл с обращениями, array_of_dir - массив папок с вложениями"""
     with os.scandir(path) as all_files:

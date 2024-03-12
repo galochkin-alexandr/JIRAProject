@@ -105,14 +105,16 @@ class Project:
         '3' - Выгрузка, '4' - Вопрос по качеству данных, иначе - Не определено, """
 
         try:
-            if str(category_type) == '1':
-                category = {'value': 'Консультация', 'id': '26977'}
-            elif str(category_type) == '2':
-                category = {'value': 'Запрос на изменение', 'id': '26978'}
-            elif str(category_type) == '3':
-                category = {'value': 'Выгрузка', 'id': '26979'}
-            elif str(category_type) == '4':
-                category = {'value': 'Вопрос по качеству данных', 'id': '26980'}
+            if str(category_type) == '1' or str(category_type) == '1.0':
+                category = {'id': '26977'}
+            elif str(category_type) == '2' or str(category_type) == '2.0':
+                category = {'id': '26978'}
+            elif str(category_type) == '3' or str(category_type) == '3.0':
+                category = {'id': '26979'}
+            elif str(category_type) == '4' or str(category_type) == '4.0':
+                category = {'id': '26980'}
+            elif str(category_type) == '5' or str(category_type) == '5.0':
+                category = {'id': '27001'}
             else:
                 category = None
             return category
@@ -137,10 +139,10 @@ class Project:
                 "components": [{'name': 'ЦПОиБА', "id": '27849'}],
                 "customfield_23497": sd.upper(),
                 "labels": labels_and_assignee['labels'],
-                "customfield_23514": region
+                "customfield_23514": region,
+                "customfield_26111": category
             }
             new_issue = self.jira.create_issue(fields=issue_dict)
-            new_issue.update(fields={'customfield_26111': category})
             self.jira.assign_issue(new_issue.key, labels_and_assignee['assignee'])
             return new_issue
         except Exception as create_except:
@@ -155,7 +157,9 @@ class Project:
             issue = self.get_issue(issue_key)
             if issue.fields.status.id == '19099':
                 self.jira.transition_issue(issue, 'Анализ')
-            if 'ЗАПРОШ' in text.upper():
+            if 'ЗАПРОШ' in text.upper() and issue.fields.status.id != '19101':
+                if issue.fields.status.id == '1':
+                    self.jira.transition_issue(issue, 'Анализ')
                 self.jira.transition_issue(issue, 'Требует уточнения')
             return comment
         except Exception as comment_except:
