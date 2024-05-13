@@ -89,9 +89,9 @@ class Project:
            '1' - у 1, '2' - в 100%, иначе - Иное"""
 
         try:
-            if str(reproduce_type) == '1':
+            if str(reproduce_type) == '1' or str(reproduce_type) == '1.0':
                 reproduce = {'value': 'у 1 пользователя/АРМ', 'id': '21755'}
-            elif str(reproduce_type) == '2':
+            elif str(reproduce_type) == '2' or str(reproduce_type) == '2.0':
                 reproduce = {'value': 'в 100% случаев (у всех пользователей)', 'id': '21754'}
             else:
                 reproduce = {'value': 'Иное', 'id': '21756'}
@@ -155,7 +155,7 @@ class Project:
         try:
             comment = self.jira.add_comment(issue_key, text)
             issue = self.get_issue(issue_key)
-            if issue.fields.status.id == '19099':
+            if 'ОТВЕТИЛ' in text.upper() and issue.fields.status.id == '19101':
                 self.jira.transition_issue(issue, 'Анализ')
             if 'ЗАПРОШ' in text.upper() and issue.fields.status.id != '19101':
                 if issue.fields.status.id == '1':
