@@ -2,6 +2,7 @@ from jira import JIRA
 from GISMUException import *
 import pandas as pd
 import os
+import time
 
 
 class Project:
@@ -140,10 +141,12 @@ class Project:
                 "customfield_23497": sd.upper(),
                 "labels": labels_and_assignee['labels'],
                 "customfield_23514": region,
-                "customfield_26111": category
+                "customfield_26111": category,
+                "customfield_13590": 'GISMU3LP-544'
             }
             new_issue = self.jira.create_issue(fields=issue_dict)
             self.jira.assign_issue(new_issue.key, labels_and_assignee['assignee'])
+            self.update_status(new_issue.key, description, True)
             return new_issue
         except Exception as create_except:
             raise GISMUException("Ошибка при создании задачи " + sd, create_except)
@@ -154,13 +157,7 @@ class Project:
         print("Комментарий к " + issue_key)
         try:
             comment = self.jira.add_comment(issue_key, text)
-            issue = self.get_issue(issue_key)
-            if 'ОТВЕТИЛ' in text.upper() and issue.fields.status.id == '19101':
-                self.jira.transition_issue(issue, 'Анализ')
-            if 'ЗАПРОШ' in text.upper() and issue.fields.status.id != '19101':
-                if issue.fields.status.id == '1':
-                    self.jira.transition_issue(issue, 'Анализ')
-                self.jira.transition_issue(issue, 'Требует уточнения')
+            self.update_status(issue_key, text, False)
             return comment
         except Exception as comment_except:
             raise GISMUException("Ошибка при создании комментария " + issue_key, comment_except)
@@ -202,17 +199,37 @@ class Project:
 
         issue_pd = pd.DataFrame(
             {'Имя': [issue.key], 'SD': [issue.fields.customfield_23497],
-                'Метки': [' '.join(issue.fields.labels)],
-                'Регион': [region],
-                'Воспроизводится': [reproduce], 'Категория': [category],
-                'Название': [issue.fields.summary], 'Описание': [issue.fields.description], 'Действие': [action]})
+             'Метки': [' '.join(issue.fields.labels)],
+             'Регион': [region],
+             'Воспроизводится': [reproduce], 'Категория': [category],
+             'Название': [issue.fields.summary], 'Описание': [issue.fields.description], 'Действие': [action]})
         return issue_pd
 
     def get_unique_value_for_field(self, field_name, number_of_query):
         set_of_value = set()
         name = self.jira_project.name
         all_values = self.jira.search_issues('project=' + self.jira_project.key, maxResults=number_of_query,
-            fields=field_name)
+                                             fields=field_name)
         for value in all_values:
             set_of_value.add(value)
         return set_of_value
+
+    def update_status(self, issue_key, text, is_new):
+        issue = self.get_issue(issue_key)
+        if is_new:
+            if text.upper().startswith('ЗАКРЫТ'):
+                self.jira.transition_issue(issue, 'Анализ')
+                self.jira.transition_issue(issue, 'В работу')
+                self.jira.transition_issue(issue, 'В ожидании подтверждения')
+                self.jira.transition_issue(issue, 'Выполнено')
+            return
+        if text.upper().startswith('ОТВЕТ') and issue.fields.status.id == '19101':
+            self.jira.transition_issue(issue, 'Анализ')
+        if text.upper().startswith('ЗАПРОШ') and issue.fields.status.id != '19101':
+            if issue.fields.status.id == '1' or issue.fields.status.id == '18096' or issue.fields.status.id == '19099':
+                self.jira.transition_issue(issue, 'Анализ')
+            self.jira.transition_issue(issue, 'Требует уточнения')
+        if text.upper().startswith('ОТКЛОН') and (
+                issue.fields.status.id == '19099' or issue.fields.status.id == '18096'):
+            self.jira.transition_issue(issue, 'Анализ')
+        return
