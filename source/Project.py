@@ -60,7 +60,7 @@ class Project:
             for current_labels in array_labels:
                 for current_excel in excel_labels:
                     if (current_labels.upper() == str(current_excel[0]).upper() or
-                            current_labels.upper() == str(current_excel[1]).upper()):
+                        current_labels.upper() == str(current_excel[1]).upper()):
                         result_labels.append(current_excel[0])
                         if assignee_login is None:
                             assignee_login = current_excel[2]
@@ -146,7 +146,6 @@ class Project:
             }
             new_issue = self.jira.create_issue(fields=issue_dict)
             self.jira.assign_issue(new_issue.key, labels_and_assignee['assignee'])
-            self.update_status(new_issue.key, description, True)
             return new_issue
         except Exception as create_except:
             raise GISMUException("Ошибка при создании задачи " + sd, create_except)
@@ -157,7 +156,9 @@ class Project:
         print("Комментарий к " + issue_key)
         try:
             comment = self.jira.add_comment(issue_key, text)
-            self.update_status(issue_key, text, False)
+            new_status = self.update_status(issue_key, text)
+            if new_status is not None:
+                print("Новый статус: " + new_status)
             return comment
         except Exception as comment_except:
             raise GISMUException("Ошибка при создании комментария " + issue_key, comment_except)
@@ -199,37 +200,39 @@ class Project:
 
         issue_pd = pd.DataFrame(
             {'Имя': [issue.key], 'SD': [issue.fields.customfield_23497],
-             'Метки': [' '.join(issue.fields.labels)],
-             'Регион': [region],
-             'Воспроизводится': [reproduce], 'Категория': [category],
-             'Название': [issue.fields.summary], 'Описание': [issue.fields.description], 'Действие': [action]})
+                'Метки': [' '.join(issue.fields.labels)],
+                'Регион': [region],
+                'Воспроизводится': [reproduce], 'Категория': [category],
+                'Название': [issue.fields.summary], 'Описание': [issue.fields.description], 'Действие': [action]})
         return issue_pd
 
     def get_unique_value_for_field(self, field_name, number_of_query):
         set_of_value = set()
         name = self.jira_project.name
         all_values = self.jira.search_issues('project=' + self.jira_project.key, maxResults=number_of_query,
-                                             fields=field_name)
+            fields=field_name)
         for value in all_values:
             set_of_value.add(value)
         return set_of_value
 
-    def update_status(self, issue_key, text, is_new):
+    def update_status(self, issue_key, text):
         issue = self.get_issue(issue_key)
-        if is_new:
-            if text.upper().startswith('ЗАКРЫТ'):
-                self.jira.transition_issue(issue, 'Анализ')
-                self.jira.transition_issue(issue, 'В работу')
-                self.jira.transition_issue(issue, 'В ожидании подтверждения')
-                self.jira.transition_issue(issue, 'Выполнено')
-            return
+        if text.upper().startswith('ЗАКРЫТ'):
+            self.jira.transition_issue(issue, 'Анализ')
+            self.jira.transition_issue(issue, 'В работу')
+            self.jira.transition_issue(issue, 'В ожидании подтверждения')
+            self.jira.transition_issue(issue, 'Выполнено')
+            return ('Выполнено')
         if text.upper().startswith('ОТВЕТ') and issue.fields.status.id == '19101':
             self.jira.transition_issue(issue, 'Анализ')
+            return ('Анализ')
         if text.upper().startswith('ЗАПРОШ') and issue.fields.status.id != '19101':
             if issue.fields.status.id == '1' or issue.fields.status.id == '18096' or issue.fields.status.id == '19099':
                 self.jira.transition_issue(issue, 'Анализ')
             self.jira.transition_issue(issue, 'Требует уточнения')
+            return ('Требует уточнения')
         if text.upper().startswith('ОТКЛОН') and (
-                issue.fields.status.id == '19099' or issue.fields.status.id == '18096'):
+            issue.fields.status.id == '19099' or issue.fields.status.id == '18096'):
             self.jira.transition_issue(issue, 'Анализ')
-        return
+            return ('Анализ')
+        return (None)
