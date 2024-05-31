@@ -101,6 +101,18 @@ class Project:
             raise GISMUException("Ошибка при сопоставлении поля 'Воспроизводится' " + reproduce_type, reproduce_except)
 
     @staticmethod
+    def get_prolong_date(prolong_date):
+        """Преобразовывает дату для поля 'Ожидаемая дата решения'
+            На вход строка в формате YYYY-MM-DD, YYYY.MM.DD или YYYY/MM/DD"""
+
+        try:
+            if pd.isnull(prolong_date) or prolong_date == '':
+                return None
+            return {prolong_date.replace('/', '-').replace('.', '-')}
+        except Exception as prolong_except:
+            raise GISMUException("Ошибка при преобразовании даты решения" + prolong_date, prolong_except)
+
+    @staticmethod
     def category(category_type):
         """Собирает поле 'Категория' '1' - Консультация, '2' - Запрос на изменение,
         '3' - Выгрузка, '4' - Вопрос по качеству данных, иначе - Не определено, """
@@ -122,7 +134,7 @@ class Project:
         except Exception as category_except:
             raise GISMUException("Ошибка при сопоставлении поля 'Категория' " + category_type, category_except)
 
-    def create_issue(self, name, description, sd, labels, reproduce_type, region, category_type):
+    def create_issue(self, name, description, sd, labels, reproduce_type, region, category_type, prolong_date):
         """Создание задачи в Jira"""
 
         print("Создание задачи " + sd)
@@ -131,6 +143,7 @@ class Project:
             reproduce = self.reproducibility(reproduce_type)
             region = self.match_region(region)
             category = self.category(category_type)
+            prolong_date = self.get_prolong_date(prolong_date)
             issue_dict = {
                 'project': {'key': self.jira_project.key},
                 'summary': name.replace('\n', ''),
@@ -142,7 +155,8 @@ class Project:
                 "labels": labels_and_assignee['labels'],
                 "customfield_23514": region,
                 "customfield_26111": category,
-                "customfield_13590": 'GISMU3LP-544'
+                "customfield_13590": 'GISMU3LP-544',
+                "customfield_23515": prolong_date
             }
             new_issue = self.jira.create_issue(fields=issue_dict)
             self.jira.assign_issue(new_issue.key, labels_and_assignee['assignee'])
@@ -150,12 +164,16 @@ class Project:
         except Exception as create_except:
             raise GISMUException("Ошибка при создании задачи " + sd, create_except)
 
-    def add_comment(self, issue_key, text):
+    def add_comment(self, issue_key, text, prolong_date):
         """К задаче по её имени (GISMU3LP-22197) добавляет комментарий text"""
 
         print("Комментарий к " + issue_key)
         try:
             comment = self.jira.add_comment(issue_key, text)
+            prolong_date = self.get_prolong_date(prolong_date)
+            if prolong_date is not None:
+                issue = self.get_issue(issue_key)
+                issue.update(fields={"customfield_23515": prolong_date})
             new_status = self.update_status(issue_key, text)
             if new_status is not None:
                 print("Новый статус: " + new_status)
@@ -203,7 +221,9 @@ class Project:
                 'Метки': [' '.join(issue.fields.labels)],
                 'Регион': [region],
                 'Воспроизводится': [reproduce], 'Категория': [category],
-                'Название': [issue.fields.summary], 'Описание': [issue.fields.description], 'Действие': [action]})
+                'Статус': [issue.fields.status.name],
+                'Название': [issue.fields.summary], 'Ожидаемая дата решения': [issue.fields.customfield_23515],
+                'Описание': [issue.fields.description], 'Действие': [action]})
         return issue_pd
 
     def get_unique_value_for_field(self, field_name, number_of_query):
