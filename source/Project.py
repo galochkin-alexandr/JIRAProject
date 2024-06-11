@@ -2,7 +2,7 @@ from jira import JIRA
 from GISMUException import *
 import pandas as pd
 import os
-import time
+from datetime import datetime, timedelta
 
 
 class Project:
@@ -60,7 +60,7 @@ class Project:
             for current_labels in array_labels:
                 for current_excel in excel_labels:
                     if (current_labels.upper() == str(current_excel[0]).upper() or
-                        current_labels.upper() == str(current_excel[1]).upper()):
+                            current_labels.upper() == str(current_excel[1]).upper()):
                         result_labels.append(current_excel[0])
                         if assignee_login is None:
                             assignee_login = current_excel[2]
@@ -108,9 +108,31 @@ class Project:
         try:
             if pd.isnull(prolong_date) or prolong_date == '':
                 return None
-            return {prolong_date.replace('/', '-').replace('.', '-')}
+            return prolong_date.replace('/', '-').replace('.', '-')
         except Exception as prolong_except:
             raise GISMUException("Ошибка при преобразовании даты решения" + prolong_date, prolong_except)
+
+    @staticmethod
+    def get_registration_date(registration_date):
+        """Преобразовывает дату для поля 'Регистрация в АСУЭ'
+            На вход строка в формате YYYY-MM-DD, YYYY.MM.DD или YYYY/MM/DD"""
+
+        try:
+            if pd.isnull(registration_date) or registration_date == '':
+                return None
+            return registration_date.replace('/', '-').replace('.', '-')
+        except Exception as registration_except:
+            raise GISMUException("Ошибка при преобразовании даты регистрации в АСУЭ" + registration_date, registration_except)
+
+    @staticmethod
+    def get_department(department):
+        """Подразделение пользователя"""
+        try:
+            if pd.isnull(department) or department is None:
+                return None
+            return str(department)
+        except Exception as department_except:
+            raise GISMUException("Ошибка при получении подразделения пользователя" + department, department_except)
 
     @staticmethod
     def category(category_type):
@@ -134,7 +156,8 @@ class Project:
         except Exception as category_except:
             raise GISMUException("Ошибка при сопоставлении поля 'Категория' " + category_type, category_except)
 
-    def create_issue(self, name, description, sd, labels, reproduce_type, region, category_type, prolong_date):
+    def create_issue(self, name, description, sd, labels, reproduce_type, region, category_type, prolong_date,
+                     department, registration_date):
         """Создание задачи в Jira"""
 
         print("Создание задачи " + sd)
@@ -144,6 +167,8 @@ class Project:
             region = self.match_region(region)
             category = self.category(category_type)
             prolong_date = self.get_prolong_date(prolong_date)
+            department = self.get_department(department)
+            registration_date = self.get_registration_date(registration_date)
             issue_dict = {
                 'project': {'key': self.jira_project.key},
                 'summary': name.replace('\n', ''),
@@ -156,7 +181,9 @@ class Project:
                 "customfield_23514": region,
                 "customfield_26111": category,
                 "customfield_13590": 'GISMU3LP-544',
-                "customfield_23515": prolong_date
+                "customfield_23515": prolong_date,
+                "customfield_26998": department,
+                "customfield_26999": registration_date
             }
             new_issue = self.jira.create_issue(fields=issue_dict)
             self.jira.assign_issue(new_issue.key, labels_and_assignee['assignee'])
@@ -216,21 +243,28 @@ class Project:
         else:
             category = issue.fields.customfield_26111.value
 
+        if issue.fields.customfield_23515 is None:
+            prolong_date = 'Не заполнено'
+        else:
+            prolong_date = issue.fields.customfield_23515
+
         issue_pd = pd.DataFrame(
             {'Имя': [issue.key], 'SD': [issue.fields.customfield_23497],
-                'Метки': [' '.join(issue.fields.labels)],
-                'Регион': [region],
-                'Воспроизводится': [reproduce], 'Категория': [category],
-                'Статус': [issue.fields.status.name],
-                'Название': [issue.fields.summary], 'Ожидаемая дата решения': [issue.fields.customfield_23515],
-                'Описание': [issue.fields.description], 'Действие': [action]})
+             'Метки': [' '.join(issue.fields.labels)],
+             'Регион': [region],
+             'Воспроизводится': [reproduce], 'Категория': [category],
+             'Статус': [issue.fields.status.name],
+             'Название': [issue.fields.summary], 'Ожидаемая дата решения': [prolong_date],
+             'Подразделение пользователя': [issue.fields.customfield_26998],
+             'Дата регистрации в АСУЭ': [issue.fields.customfield_26999],
+             'Описание': [issue.fields.description], 'Действие': [action]})
         return issue_pd
 
     def get_unique_value_for_field(self, field_name, number_of_query):
         set_of_value = set()
         name = self.jira_project.name
         all_values = self.jira.search_issues('project=' + self.jira_project.key, maxResults=number_of_query,
-            fields=field_name)
+                                             fields=field_name)
         for value in all_values:
             set_of_value.add(value)
         return set_of_value
@@ -252,7 +286,45 @@ class Project:
             self.jira.transition_issue(issue, 'Требует уточнения')
             return ('Требует уточнения')
         if text.upper().startswith('ОТКЛОН') and (
-            issue.fields.status.id == '19099' or issue.fields.status.id == '18096'):
+                issue.fields.status.id == '19099' or issue.fields.status.id == '18096'):
             self.jira.transition_issue(issue, 'Анализ')
             return ('Анализ')
         return (None)
+
+    def get_current_day_issues(self):
+        current_day = datetime.today().strftime('%Y-%m-%d')
+        search_query = f""" 
+            created > {current_day} 
+            and project = 'GISMU3LP' 
+            and "Ожидаемая дата решения" is not null
+        """
+        result = self.jira.search_issues(search_query, maxResults=500)
+        return result
+
+    def get_prev_day_issues(self):
+        current_day = datetime.today().strftime('%Y-%m-%d')
+        prev_day = (datetime.today()-timedelta(days=1)).strftime('%Y-%m-%d')
+        search_query = f""" 
+            created > {prev_day} and created < {current_day}
+            and project = 'GISMU3LP' 
+            and "Ожидаемая дата решения" is not null
+        """
+        result = self.jira.search_issues(search_query, maxResults=500)
+        return result
+
+    @staticmethod
+    def get_fio(description):
+        start_index = description.find('Контактные данные:')
+        temp_desc = description[start_index + 18:]
+        fio = temp_desc[:temp_desc.find('\n')]
+        if fio[0] == ' ':
+            fio = fio[1:]
+        return fio
+
+    @staticmethod
+    def get_last_comment(issue):
+        all_comments = issue.fields.comment.comments
+        if all_comments is None or len(all_comments) == 0:
+            return ''
+        last_comment = sorted(all_comments, key=lambda comment: comment.created, reverse=True)[0]
+        return last_comment

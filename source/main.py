@@ -30,7 +30,7 @@ try:
 
     """result - DataFrame с обработанными обращениями"""
     result = pd.DataFrame({'Имя': [], 'SD': [], 'Метки': [], 'Регион': [], 'Воспроизводится': [],
-                           'Название': [], 'Описание': [], 'Действие': []})
+                           'Название': [], 'Ожидаемая дата решения': [], 'Описание': [], 'Действие': []})
 
     """result_attachment - DataFrame с обработанными вложениями"""
     result_attachment = pd.DataFrame({'Имя обращения': [], 'Кол-во вложений': []})
@@ -45,15 +45,18 @@ try:
 
             """Если обращения с таким sd нет - создаём новое, иначе - добавляем комментарий"""
             if new_issue is None:
-                new_issue = gismu3lp_project.create_issue(name=current_issue[6], description=current_issue[7],
+                new_issue = gismu3lp_project.create_issue(name=current_issue[8], description=current_issue[9],
                                                           sd=sd, labels=current_issue[1],
                                                           reproduce_type=current_issue[3],
                                                           region=current_issue[2],
                                                           category_type=current_issue[4],
-                                                          prolong_date=current_issue[5])
+                                                          prolong_date=current_issue[5],
+                                                          department=current_issue[6],
+                                                          registration_date=current_issue[7])
                 result = pd.concat([result, gismu3lp_project.issue_to_pd(new_issue, 'Новая')])
             else:
-                gismu3lp_project.add_comment(new_issue.key, current_issue[6], prolong_date=current_issue[5])
+                gismu3lp_project.add_comment(new_issue.key, current_issue[9], prolong_date=current_issue[5])
+                new_issue = gismu3lp_project.find_issue(sd)
                 result = pd.concat([result, gismu3lp_project.issue_to_pd(new_issue, 'Комментарий')])
         except Exception as exception:
             issue_except = GISMUException(["Ошибка при обработке обращения " + sd, exception])
