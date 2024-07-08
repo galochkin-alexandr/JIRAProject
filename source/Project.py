@@ -294,23 +294,70 @@ class Project:
 
     def get_current_day_issues(self):
         current_day = datetime.today().strftime('%Y-%m-%d')
-        search_query = f""" 
-            created > {current_day} 
-            and project = 'GISMU3LP' 
-            and "Ожидаемая дата решения" is not null
-        """
+        func_customers = self.get_func_customers('../resources/Функциональные заказчики.txt')
+        customer_query = ''
+        for customer in func_customers:
+            customer_query = customer_query + """ 
+                       or description ~ "
+                   """ + customer + """
+                       "
+                   """
+        customer_query = customer_query + ')'
+        assignees = self.get_assignees('../resources/Исполнители.txt')
+        assignee_query = ' and assignee in (' + assignees + ')'
+        search_query = f"""
+                   created > {current_day}
+                   and project = 'GISMU3LP'
+                   and component = "ЦПОиБА"
+                   and status in ("Заявка в работе", "Новая задача", "Анализ", "Ожидание исправления")
+                   and ("Ожидаемая дата решения" is not null
+               """ + customer_query + assignee_query
         result = self.jira.search_issues(search_query, maxResults=500)
         return result
 
     def get_prev_day_issues(self):
         current_day = datetime.today().strftime('%Y-%m-%d')
         prev_day = (datetime.today() - timedelta(days=1)).strftime('%Y-%m-%d')
-        search_query = f""" 
+        func_customers = self.get_func_customers('../resources/Функциональные заказчики.txt')
+        customer_query = ''
+        for customer in func_customers:
+            customer_query = customer_query + """ 
+                or description ~ "
+            """ + customer + """
+                "
+            """
+        customer_query = customer_query + ')'
+        assignees = self.get_assignees('../resources/Исполнители.txt')
+        assignee_query = ' and assignee in (' + assignees + ')'
+        search_query = f"""
             created > {prev_day} and created < {current_day}
-            and project = 'GISMU3LP' 
-            and "Ожидаемая дата решения" is not null
-        """
+            and project = 'GISMU3LP'
+            and component = "ЦПОиБА"
+            and status in ("Заявка в работе", "Новая задача", "Анализ", "Ожидание исправления")
+            and ("Ожидаемая дата решения" is not null
+        """ + customer_query + assignee_query
         result = self.jira.search_issues(search_query, maxResults=500)
+        return result
+
+    def get_all_day_issues(self):
+        func_customers = self.get_func_customers('../resources/Функциональные заказчики.txt')
+        customer_query = ''
+        for customer in func_customers:
+            customer_query = customer_query + """ 
+                or description ~ "
+            """ + customer + """
+                "
+            """
+        customer_query = customer_query + ')'
+        assignees = self.get_assignees('../resources/Исполнители.txt')
+        assignee_query = ' and assignee in (' + assignees + ')'
+        search_query = f""" 
+            project = 'GISMU3LP'
+            and component = "ЦПОиБА"
+            and status in ("Заявка в работе", "Новая задача", "Анализ", "Ожидание исправления")
+            and ("Ожидаемая дата решения" is not null
+        """ + customer_query + assignee_query
+        result = self.jira.search_issues(search_query, maxResults=700)
         return result
 
     @staticmethod
@@ -327,7 +374,7 @@ class Project:
         all_comments = issue.fields.comment.comments
         if all_comments is None or len(all_comments) == 0:
             return ''
-        last_comment = sorted(all_comments, key=lambda comment: comment.created, reverse=True)[0]
+        last_comment = sorted(all_comments, key=lambda comment: comment.created, reverse=True)[0].body
         return last_comment
 
     @staticmethod
@@ -336,3 +383,19 @@ class Project:
             return ''
         new_date = datetime.strptime(date, old_format).strftime(new_format)
         return str(new_date)
+
+    @staticmethod
+    def get_func_customers(file_path):
+        customers_file = open(file_path, "r", encoding="utf_8_sig")
+        result = []
+        for customer in customers_file:
+            result.append(customer.replace('\n', ''))
+        return result
+
+    @staticmethod
+    def get_assignees(file_path):
+        assignees_file = open(file_path, "r", encoding="utf_8_sig")
+        result = ''
+        for assignee in assignees_file:
+            result += assignee.replace('\n', ', ')
+        return result
